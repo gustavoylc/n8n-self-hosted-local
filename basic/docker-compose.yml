@@ -1,0 +1,53 @@
+volumes:
+  npm_data:
+  npm_letsencrypt:
+  n8n_data:
+  cloudflared_data:
+
+networks:
+  proxy-tier:
+    driver: bridge
+
+services:
+  nginx-proxy-manager:
+    image: jc21/nginx-proxy-manager:latest
+    container_name: nginx-proxy-manager
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+      - "81:81"
+    volumes:
+      - npm_data:/data
+      - npm_letsencrypt:/etc/letsencrypt
+    environment:
+      - DISABLE_IPV6=true
+      - TZ=${TZ}
+    networks:
+      - proxy-tier
+
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    container_name: n8n
+    restart: unless-stopped
+    environment:
+      - WEBHOOK_URL=https://${URL}/
+      - N8N_PROTOCOL=https
+      - N8N_HOST=${URL}
+      - GENERIC_TIMEZONE=${TZ}
+      - N8N_TRUST_PROXY=true
+      - N8N_PROXY_HOPS=2
+    volumes:
+      - n8n_data:/home/node/.n8n
+    networks:
+      - proxy-tier
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARED_TUNNEL_TOKEN}
+    volumes:
+      - cloudflared_data:/etc/cloudflared
+    networks:
+      - proxy-tier
