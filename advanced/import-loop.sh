@@ -17,6 +17,25 @@ if [ "$ENABLE_LOG" -eq 1 ]; then
   exec > >(tee -a "$LOGFILE") 2>&1
 fi
 
+################################################################
+# IMPORT CREDENTIALS (bulk, one-shot)
+################################################################
+if compgen -G "/import/credentials/*.json" > /dev/null; then
+  echo "=== Importing credentials ==="
+  if n8n import:credentials --separate --input=/import/credentials; then
+    echo "✓ Credentials imported successfully"
+  else
+    echo "✗ Error while importing credentials" | tee -a "$ERRORS"
+  fi
+  echo
+else
+  echo "No credential files found — skipping"
+  echo
+fi
+
+################################################################
+# LOOP THROUGH WORKFLOWS
+################################################################
 TOTAL=0
 INDEX=1
 
@@ -24,7 +43,7 @@ for f in /import/workflows/*.json; do
   TOTAL=$((TOTAL+1))
   WF=$(basename "$f")
 
-  # ---------- PRE-CHECK: add name / active ----------
+  # ---- PRE-CHECK: add name / active if missing ----
   BASENAME="${WF%.json}"
   node - <<'NODE' "$f" "$BASENAME"
     const fs   = require('fs');
@@ -35,7 +54,7 @@ for f in /import/workflows/*.json; do
       const data = JSON.parse(fs.readFileSync(file, 'utf8'));
       let modified = false;
 
-      if (!('name' in data))   { data.name   = defName; modified = true; }
+      if (!('name'   in data)) { data.name   = defName; modified = true; }
       if (!('active' in data)) { data.active = false;   modified = true; }
 
       if (modified) {
@@ -46,7 +65,7 @@ for f in /import/workflows/*.json; do
       process.exit(1);
     }
 NODE
-  # --------------------------------------------------
+  # -------------------------------------------------
 
   echo "► ${INDEX} - Importing ${WF}"
   if n8n import:workflow --input="$f"; then
@@ -59,6 +78,9 @@ NODE
   INDEX=$((INDEX+1))
 done
 
+################################################################
+# SUMMARY
+################################################################
 FAILS=$(wc -l < "$ERRORS" | tr -d ' ')
 
 printf '\n'
