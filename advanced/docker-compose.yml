@@ -130,7 +130,7 @@ services:
     volumes:
       - ./n8n/import:/import
       - n8n_storage:/home/node/.n8n
-      # - ./import-loop.sh:/scripts/import-loop.sh:ro 
+      # - ./import-loop.sh:/scripts/import-loop.sh:ro
     networks:
       - n8n-network
     entrypoint: /bin/sh
@@ -142,7 +142,6 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      # - SAVE_LOG=false
       - DB_TYPE=postgresdb
       - DB_POSTGRESDB_HOST=postgres
       - DB_POSTGRESDB_USER=${POSTGRES_USER}
