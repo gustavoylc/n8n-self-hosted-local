@@ -130,16 +130,19 @@ services:
     volumes:
       - ./n8n/import:/import
       - n8n_storage:/home/node/.n8n
+      - ./import-loop.sh:/scripts/import-loop.sh:ro 
     networks:
       - n8n-network
     entrypoint: /bin/sh
-    command:
-      - "-c"
-      - "n8n import:credentials --separate --input=/import/credentials && n8n import:workflow --separate --input=/import/workflows"
+    # command:
+      # - "-c"
+      # - "n8n import:credentials --separate --input=/import/credentials && n8n import:workflow --separate --input=/import/workflows"
+    command: ["/scripts/import-loop.sh"]
     depends_on:
       postgres:
         condition: service_healthy
     environment:
+      - SAVE_LOG=false
       - DB_TYPE=postgresdb
       - DB_POSTGRESDB_HOST=postgres
       - DB_POSTGRESDB_USER=${POSTGRES_USER}
