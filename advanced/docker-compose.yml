@@ -69,8 +69,6 @@ services:
     hostname: qdrant
     container_name: qdrant
     restart: unless-stopped
-    ports:
-      - "6333:6333"
     volumes:
       - qdrant_storage:/qdrant/storage
     networks:
@@ -136,7 +134,13 @@ services:
     entrypoint: /bin/sh
     command:
       - "-c"
-      - "n8n import:credentials --separate --input=/import/credentials && n8n import:workflow --separate --input=/import/workflows"
+      - |
+        if [ "${RUN_IMPORT_ON_STARTUP:-false}" = "true" ]; then
+          echo "RUN_IMPORT_ON_STARTUP is true. Running import..."
+          n8n import:credentials --separate --input=/import/credentials && n8n import:workflow --separate --input=/import/workflows
+        else
+          echo "RUN_IMPORT_ON_STARTUP is not true. Skipping import."
+        fi
     # command: ["/scripts/import-loop.sh"]
     depends_on:
       postgres:
@@ -151,6 +155,7 @@ services:
       - N8N_USER_MANAGEMENT_JWT_SECRET=${N8N_USER_MANAGEMENT_JWT_SECRET}
       - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
       - N8N_RUNNERS_ENABLED=true
+      - RUN_IMPORT_ON_STARTUP=${RUN_IMPORT_ON_STARTUP:-false}
 
   n8n-export:
     image: docker.n8n.io/n8nio/n8n:latest
@@ -165,7 +170,13 @@ services:
     entrypoint: /bin/sh
     command:
       - "-c"
-      - "n8n export:credentials --backup --output=/backup/credentials && n8n export:workflow --backup --output=/backup/workflows || true"
+      - |
+        if [ "${RUN_BACKUP_ON_STARTUP:-false}" = "true" ]; then
+          echo "RUN_BACKUP_ON_STARTUP is true. Running export..."
+          n8n export:credentials --backup --output=/backup/credentials && n8n export:workflow --backup --output=/backup/workflows || true
+        else
+          echo "RUN_BACKUP_ON_STARTUP is not true. Skipping export."
+        fi
     depends_on:
       postgres:
         condition: service_healthy
@@ -181,6 +192,7 @@ services:
       - N8N_USER_MANAGEMENT_JWT_SECRET=${N8N_USER_MANAGEMENT_JWT_SECRET}
       - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
       - N8N_RUNNERS_ENABLED=true
+      - RUN_BACKUP_ON_STARTUP=${RUN_BACKUP_ON_STARTUP:-false}
 
   n8n:
     image: docker.n8n.io/n8nio/n8n:latest
