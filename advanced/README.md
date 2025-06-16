@@ -1,54 +1,53 @@
-## | [English](README.en.md) | [Español](README.md) |
+# Advanced Self-Hosted n8n Setup
 
-# Configuración Avanzada de n8n Autoalojado
+This setup uses Docker Compose to deploy a robust and scalable n8n instance, with AI features and additional tools for complete management.
 
-Esta configuración utiliza Docker Compose para desplegar una instancia de n8n robusta y escalable, con funcionalidades de IA y herramientas adicionales para una gestión completa.
+## Overview
 
-## Descripción General
+This Docker Compose stack is designed to provide an "all-inclusive" self-hosted n8n solution. It includes:
 
-Este stack de Docker Compose está diseñado para proporcionar una solución de autoalojado de n8n "con todo incluido". Incluye:
+- **n8n in queue mode**: For high performance and scalability, with a main service and a worker.
+- **PostgreSQL Database**: As a persistent database for n8n.
+- **Redis**: For n8n's queue management.
+- **Nginx Proxy Manager**: To easily manage reverse proxies and SSL certificates.
+- **Cloudflare Tunnel**: To securely expose services to the internet without opening ports.
+- **Ollama and Qdrant**: To run large language models (LLMs) locally and support n8n's AI features.
+- **Import/Export Scripts**: To automatically back up and restore workflows and credentials.
 
-- **n8n en modo cola (`queue`)**: Para un alto rendimiento y escalabilidad, con un servicio principal y un trabajador.
-- **Base de datos PostgreSQL**: Como base de datos persistente para n8n.
-- **Redis**: Para la gestión de colas de n8n.
-- **Nginx Proxy Manager**: Para gestionar fácilmente los proxies inversos y los certificados SSL.
-- **Cloudflare Tunnel**: Para exponer de forma segura los servicios a Internet sin abrir puertos.
-- **Ollama y Qdrant**: Para ejecutar modelos de lenguaje grandes (LLMs) localmente y dar soporte a las funcionalidades de IA de n8n.
-- **Scripts de Importación/Exportación**: Para hacer copias de seguridad y restaurar flujos de trabajo y credenciales automáticamente.
-
-## Estructura del Directorio
+## Directory Structure
 
 ```
 advanced/
-├── docker-compose.yml     # El archivo principal de Docker Compose.
-├── init-data.sh           # Script de inicialización para la base de datos.
+├── docker-compose.yml     # The main Docker Compose file.
+├── init-data.sh           # Database initialization script.
+├── import-loop.sh         # Advanced import script with error handling.
 ├── n8n/
-│   ├── backup/            # Directorio para las copias de seguridad.
+│   ├── backup/            # Directory for backups.
 │   │   ├── credentials/
 │   │   └── workflows/
-│   └── import/            # Directorio para importar datos.
+│   └── import/            # Directory for importing data.
 │       ├── credentials/
 │       └── workflows/
-└── README.md              # Este archivo.
+└── README.md              # This file.
 ```
 
-## Prerrequisitos
+## Prerequisites
 
-- Docker instalado.
-- Una cuenta de Cloudflare y un token de túnel.
+- Docker installed.
+- A Cloudflare account and tunnel token.
 
-## Puesta en Marcha
+## Getting Started
 
-1.  **Clonar el repositorio** (si aún no lo has hecho).
+1.  **Clone the repository** (if you haven't already).
 
-2.  **Navegar al directorio `advanced`**:
+2.  **Navigate to the `advanced` directory**:
 
     ```bash
     cd advanced
     ```
 
-3.  **Crear el archivo de entorno (`.env`)**:
-    Crea un archivo llamado `.env` en este directorio y pega el siguiente contenido. Asegúrate de reemplazar los valores con tu propia configuración.
+3.  **Create the environment file (`.env`)**:
+    Create a file named `.env` in this directory and paste the following content. Make sure to replace the values with your own settings.
 
     ```dotenv
     # -----------------------------------------------------------------------------
@@ -102,66 +101,66 @@ advanced/
     RUN_BACKUP_ON_STARTUP=false
     ```
 
-    **Importante**: Necesitarás generar claves seguras para `N8N_ENCRYPTION_KEY` y `N8N_USER_MANAGEMENT_JWT_SECRET`. Puedes usar `openssl rand -hex 32` en tu terminal para generar cada una.
+    **Important**: You will need to generate secure keys for `N8N_ENCRYPTION_KEY` and `N8N_USER_MANAGEMENT_JWT_SECRET`. You can use `openssl rand -hex 32` in your terminal to generate each one.
 
-4.  **Iniciar los servicios**:
+4.  **Start the services**:
     ```bash
     docker-compose up -d
     ```
 
-## Servicios
+## Services
 
-Aquí hay un desglose de cada servicio en `docker-compose.yml`:
+Here is a breakdown of each service in `docker-compose.yml`:
 
-- `nginx-proxy-manager`: Interfaz de usuario para la gestión de proxy inverso. Accesible en `http://<tu_ip>:81`.
-- `cloudflared`: Crea un túnel seguro a la red de Cloudflare.
-- `postgres`: La base de datos de PostgreSQL para n8n.
-- `redis`: Almacén en memoria utilizado por n8n para la gestión de colas.
-- `qdrant`: Motor de búsqueda de vectores para las funciones de IA de n8n.
-- `ollama`: Permite ejecutar LLMs localmente.
-- `init-ollama`: Un servicio de un solo uso que descarga un modelo de LLM (por defecto `llama3.2`) al iniciar.
-- `n8n`: El servicio principal de la aplicación n8n.
-- `n8n-worker`: Un trabajador que procesa las ejecuciones de los flujos de trabajo.
-- `n8n-import`: Servicio para importar credenciales y flujos de trabajo al iniciar.
-- `n8n-export`: Servicio para exportar credenciales y flujos de trabajo al iniciar.
+- `nginx-proxy-manager`: UI for reverse proxy management. Accessible at `http://<your_ip>:81`.
+- `cloudflared`: Creates a secure tunnel to the Cloudflare network.
+- `postgres`: The PostgreSQL database for n8n.
+- `redis`: In-memory store used by n8n for queue management.
+- `qdrant`: Vector search engine for n8n's AI features.
+- `ollama`: Allows running LLMs locally.
+- `init-ollama`: A one-time service that downloads an LLM model (default `llama3.2`) on startup.
+- `n8n`: The main n8n application service.
+- `n8n-worker`: A worker that processes workflow executions.
+- `n8n-import`: Service to import credentials and workflows on startup.
+- `n8n-export`: Service to export credentials and workflows on startup.
 
-## Configuración
+## Configuration
 
-Las variables de entorno se gestionan en el archivo `.env`. Las más importantes son:
+Environment variables are managed in the `.env` file. The most important are:
 
-- `URL`: El nombre de dominio público para tu instancia de n8n (ej. `n8n.example.com`).
-- `TZ`: Tu zona horaria (ej. `America/Mexico_City`).
-- `CLOUDFLARED_TUNNEL_TOKEN`: Tu token de túnel de Cloudflare.
-- `POSTGRES_*`: Credenciales para la base de datos PostgreSQL.
-- `N8N_ENCRYPTION_KEY`: Clave de cifrado para las credenciales de n8n.
-- `N8N_USER_MANAGEMENT_JWT_SECRET`: Secreto JWT para la gestión de usuarios.
-- `RUN_IMPORT_ON_STARTUP`: Ponlo en `true` para importar datos desde el directorio `n8n/import` al iniciar.
-- `RUN_BACKUP_ON_STARTUP`: Ponlo en `true` para hacer una copia de seguridad de los datos en el directorio `n8n/backup` al iniciar.
+- `URL`: The public domain name for your n8n instance (e.g., `n8n.example.com`).
+- `TZ`: Your timezone (e.g., `America/New_York`).
+- `CLOUDFLARED_TUNNEL_TOKEN`: Your Cloudflare tunnel token.
+- `POSTGRES_*`: Credentials for the PostgreSQL database.
+- `N8N_ENCRYPTION_KEY`: Encryption key for n8n credentials.
+- `N8N_USER_MANAGEMENT_JWT_SECRET`: JWT secret for user management.
+- `RUN_IMPORT_ON_STARTUP`: Set to `true` to import data from the `n8n/import` directory on startup.
+- `RUN_BACKUP_ON_STARTUP`: Set to `true` to back up data to the `n8n/backup` directory on startup.
 
-## Uso
+## Usage
 
-### Acceder a los servicios
+### Accessing Services
 
 - **n8n**: `https://<URL>`
-- **Nginx Proxy Manager**: `http://<IP_del_servidor>:81`
+- **Nginx Proxy Manager**: `http://<server_ip>:81`
 
-### Importación y Exportación
+### Import and Export
 
-- **Importar**: Coloca tus archivos de credenciales (`.json`) y flujos de trabajo (`.json`) en los directorios `n8n/import/credentials` y `n8n/import/workflows` respectivamente. Establece `RUN_IMPORT_ON_STARTUP=true` en tu `.env` y reinicia los servicios.
-- **Exportar/Backup**: Establece `RUN_BACKUP_ON_STARTUP=true` en tu `.env`. Al iniciar, los datos se exportarán a `n8n/backup`.
+- **Import**: Place your credential (`.json`) and workflow (`.json`) files in the `n8n/import/credentials` and `n8n/import/workflows` directories, respectively. Set `RUN_IMPORT_ON_STARTUP=true` in your `.env` file and restart the services.
+- **Export/Backup**: Set `RUN_BACKUP_ON_STARTUP=true` in your `.env` file. On startup, data will be exported to `n8n/backup`.
 
-#### Manejo de Errores de Importación
+#### Import Error Handling
 
-El comando por defecto para el servicio `n8n-import` es básico. Si tienes muchos flujos de trabajo y necesitas un manejo de errores más robusto, puedes usar el script `import-loop.sh` proporcionado. Este script intenta importar los flujos de trabajo uno por uno. Si un flujo de trabajo falla (debido a un JSON inválido o un error de importación), se mueve al directorio `n8n/import/workflows/with_error`, y el proceso continúa con el siguiente archivo.
+The default command for the `n8n-import` service is basic. If you have many workflows and need more robust error handling, you can use the provided `import-loop.sh` script. This script attempts to import workflows one by one. If a workflow fails (due to invalid JSON or an import error), it is moved to the `n8n/import/workflows/with_error` directory, and the process continues with the next file.
 
-Para usarlo, modifica el servicio `n8n-import` en tu archivo `docker-compose.yml`:
+To use it, modify the `n8n-import` service in your `docker-compose.yml` file:
 
 ```yaml
-# ... (dentro del servicio n8n-import)
+# ... (inside n8n-import service)
 volumes:
   - ./n8n/import:/import
   - n8n_storage:/home/node/.n8n
-  - ./import-loop.sh:/scripts/import-loop.sh:ro # Descomenta esta línea
+  - ./import-loop.sh:/scripts/import-loop.sh:ro # Uncomment this line
 # ...
 # command:
 #   - "-c"
@@ -169,24 +168,24 @@ volumes:
 #     if [ "${RUN_IMPORT_ON_STARTUP:-false}" = "true" ]; then
 #       ...
 #     fi
-command: ["/scripts/import-loop.sh"] # Reemplaza el comando anterior con esto
+command: ["/scripts/import-loop.sh"] # Replace the old command with this
 # ...
 ```
 
-### IA Local con Ollama
+### Local AI with Ollama
 
-El servicio `ollama` te permite usar modelos de lenguaje grandes sin depender de APIs externas. El servicio `init-ollama` descargará `llama3.2` por defecto. Puedes cambiar el modelo en el `docker-compose.yml`.
+The `ollama` service allows you to use large language models without relying on external APIs. The `init-ollama` service will download `llama3.2` by default. You can change the model in the `docker-compose.yml`.
 
-Para usar Ollama con tu hardware, puede que necesites ajustar la configuración del servicio `ollama` en `docker-compose.yml`:
+To use Ollama with your hardware, you may need to adjust the `ollama` service configuration in `docker-compose.yml`:
 
-- **Para CPU**:
-  Asegúrate de que la `image` sea `ollama/ollama:latest` y de que no haya secciones `deploy` o `devices` para GPU en la definición del servicio.
+- **For CPU**:
+  Ensure the `image` is `ollama/ollama:latest` and that there are no `deploy` or `devices` sections for GPU in the service definition.
 
-- **Para GPU NVIDIA**:
-  Descomenta o añade la sección `deploy` al servicio `ollama`. Debes tener los drivers de tu GPU instalados en la máquina anfitriona.
+- **For NVIDIA GPU**:
+  Uncomment or add the `deploy` section to the `ollama` service. Your GPU drivers must be installed on the host machine.
 
   ```yaml
-  # ... (dentro del servicio ollama)
+  # ... (inside ollama service)
   image: ollama/ollama:latest
   deploy:
     resources:
@@ -197,10 +196,10 @@ Para usar Ollama con tu hardware, puede que necesites ajustar la configuración 
             capabilities: [gpu]
   ```
 
-- **Para GPU AMD (en Linux)**:
-  Cambia la `image` a `ollama/ollama:rocm` y descomenta o añade la sección `devices`.
+- **For AMD GPU (on Linux)**:
+  Change the `image` to `ollama/ollama:rocm` and uncomment or add the `devices` section.
   ```yaml
-  # ... (dentro del servicio ollama)
+  # ... (inside ollama service)
   image: ollama/ollama:rocm
   devices:
     - "/dev/kfd"
