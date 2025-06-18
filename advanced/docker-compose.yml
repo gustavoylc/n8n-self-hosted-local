@@ -1,3 +1,4 @@
+# Store all the data in the volumes
 volumes:
   npm_storage:
   npm_letsencrypt:
@@ -8,45 +9,50 @@ volumes:
   ollama_storage:
   qdrant_storage:
 
+# Create a network for the services to communicate with each other
 networks:
   n8n-network:
     driver: bridge
 
+# Create the services
 services:
+  # Handle the SSL certificates and the reverse proxy for the n8n instance
   nginx-proxy-manager:
-    image: jc21/nginx-proxy-manager:latest
-    hostname: nginx-proxy-manager
-    container_name: nginx-proxy-manager
-    restart: always
+    image: jc21/nginx-proxy-manager:latest # Use the latest nginx-proxy-manager image
+    hostname: nginx-proxy-manager # Set the hostname for the service
+    container_name: nginx-proxy-manager # Set the container name
+    restart: always # Restart the service if it crashes
     ports:
-      - "80:80"
-      - "443:443"
-      - "81:81"
+      - "80:80" # HTTP
+      - "443:443" # HTTPS
+      - "81:81" # Admin panel
     volumes:
-      - npm_storage:/data
-      - npm_letsencrypt:/etc/letsencrypt
+      - npm_storage:/data # Store the data for the NPM instance
+      - npm_letsencrypt:/etc/letsencrypt # Store the SSL certificates
     environment:
       - DISABLE_IPV6=true
-      - TZ=${TZ}
+      - TZ=${TZ} # Set the timezone
     networks:
       - n8n-network
 
+  # Handle the cloudflared tunnel
   cloudflared:
-    image: cloudflare/cloudflared:latest
-    hostname: cloudflared
-    container_name: cloudflared
-    restart: unless-stopped
-    command: tunnel --no-autoupdate run --token ${CLOUDFLARED_TUNNEL_TOKEN}
+    image: cloudflare/cloudflared:latest # Use the latest cloudflared image
+    hostname: cloudflared # Set the hostname for the service
+    container_name: cloudflared # Set the container name
+    restart: unless-stopped # Restart the service if it crashes
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARED_TUNNEL_TOKEN} # Run the cloudflared tunnel
     volumes:
-      - cloudflared_storage:/etc/cloudflared
+      - cloudflared_storage:/etc/cloudflared # Store the cloudflared configuration
     networks:
       - n8n-network
 
+  # Handle the postgres database
   postgres:
-    image: postgres:16
-    hostname: postgres
-    container_name: postgres
-    restart: unless-stopped
+    image: postgres:16 # Use the latest postgres image
+    hostname: postgres # Set the hostname for the service
+    container_name: postgres # Set the container name
+    restart: unless-stopped # Restart the service if it crashes
     environment:
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
@@ -54,11 +60,11 @@ services:
       - POSTGRES_NON_ROOT_USER=${POSTGRES_NON_ROOT_USER}
       - POSTGRES_NON_ROOT_PASSWORD=${POSTGRES_NON_ROOT_PASSWORD}
     volumes:
-      - postgres_storage:/var/lib/postgresql/data
-      - ./init-data.sh:/docker-entrypoint-initdb.d/init-data.sh
+      - postgres_storage:/var/lib/postgresql/data # Store the postgres data
+      - ./init-data.sh:/docker-entrypoint-initdb.d/init-data.sh # Run the init-data.sh script
     networks:
       - n8n-network
-    healthcheck:
+    healthcheck: # Check if the postgres service is healthy
       test:
         [
           "CMD-SHELL",
@@ -68,31 +74,34 @@ services:
       timeout: 5s
       retries: 10
 
+  # Handle the redis database
   redis:
-    image: redis:latest
-    hostname: redis
-    container_name: redis
-    restart: unless-stopped
+    image: redis:latest # Use the latest redis image
+    hostname: redis # Set the hostname for the service
+    container_name: redis # Set the container name
+    restart: unless-stopped # Restart the service if it crashes
     volumes:
-      - redis_storage:/data
+      - redis_storage:/data # Store the redis data
     networks:
       - n8n-network
-    healthcheck:
+    healthcheck: # Check if the redis service is healthy
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 5s
       retries: 10
 
+  # Handle the qdrant database
   qdrant:
-    image: qdrant/qdrant:latest
-    hostname: qdrant
-    container_name: qdrant
-    restart: unless-stopped
+    image: qdrant/qdrant:latest # Use the latest qdrant image
+    hostname: qdrant # Set the hostname for the service
+    container_name: qdrant # Set the container name
+    restart: unless-stopped # Restart the service if it crashes
     volumes:
       - qdrant_storage:/qdrant/storage
     networks:
       - n8n-network
 
+  # Handle the ollama model server
   ollama:
     # Use `ollama/ollama:latest` for CPU, or `ollama/ollama:rocm` for AMD GPUs.
     # For NVIDIA, use the `deploy` section below.
@@ -103,6 +112,12 @@ services:
       - ollama_storage:/root/.ollama
     networks:
       - n8n-network
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
     # For NVIDIA GPUs, uncomment the following:
     # deploy:
     #   resources:
@@ -123,8 +138,9 @@ services:
     #   - "/dev/kfd"
     #   - "/dev/dri"
 
+  # Handle the init-ollama service
   # This service will pull the llama3 model when you first start the stack.
-  # You can change 'llama3' to another model if you prefer.
+  # You can change 'llama3.2' to another model if you prefer.
   init-ollama:
     image: ollama/ollama:latest
     container_name: init-ollama
@@ -135,15 +151,25 @@ services:
     entrypoint: /bin/sh
     command:
       - "-c"
-      - "sleep 5 && ollama pull llama3.2"
+      - |
+        echo "Waiting for Ollama server to be ready..."
+        until OLLAMA_HOST=http://ollama:11434 ollama list > /dev/null 2>&1; do
+          echo "Waiting for Ollama server..."
+          sleep 5
+        done
+        echo "Ollama server is ready, pulling models..."
+        OLLAMA_HOST=http://ollama:11434 ollama pull llama3.2
+        echo "Models pulled successfully"
     depends_on:
-      - ollama
+      ollama:
+        condition: service_healthy
 
+  # Handle the n8n-import service
   n8n-import:
-    image: docker.n8n.io/n8nio/n8n:latest
-    hostname: n8n-import
-    container_name: n8n-import
-    restart: "no"
+    image: docker.n8n.io/n8nio/n8n:latest # Use the latest n8n image
+    hostname: n8n-import # Set the hostname for the service
+    container_name: n8n-import # Set the container name
+    restart: "no" # Do not restart the service if it crashes
     volumes:
       - ./n8n/import:/import
       - n8n_storage:/home/node/.n8n
@@ -151,7 +177,7 @@ services:
     networks:
       - n8n-network
     entrypoint: /bin/sh
-    command:
+    command: 
       - "-c"
       - |
         if [ "${RUN_IMPORT_ON_STARTUP:-false}" = "true" ]; then
@@ -180,11 +206,12 @@ services:
       - N8N_RUNNERS_ENABLED=true
       - RUN_IMPORT_ON_STARTUP=${RUN_IMPORT_ON_STARTUP:-false}
 
+  # Handle the n8n-export service
   n8n-export:
-    image: docker.n8n.io/n8nio/n8n:latest
-    hostname: n8n-export
-    container_name: n8n-export
-    restart: "no"
+    image: docker.n8n.io/n8nio/n8n:latest # Use the latest n8n image
+    hostname: n8n-export # Set the hostname for the service
+    container_name: n8n-export # Set the container name
+    restart: "no" # Do not restart the service if it crashes
     networks:
       - n8n-network
     volumes:
@@ -223,33 +250,33 @@ services:
 
   n8n:
     image: docker.n8n.io/n8nio/n8n:latest
-    hostname: n8n
-    container_name: n8n
-    restart: unless-stopped
+    hostname: n8n # Set the hostname for the service
+    container_name: n8n # Set the container name
+    restart: unless-stopped # Restart the service if it crashes
     environment:
-      - WEBHOOK_URL=https://${URL}/
-      - N8N_PROTOCOL=https
-      - N8N_HOST=${URL}
-      - GENERIC_TIMEZONE=${TZ}
-      - N8N_TRUST_PROXY=true
-      - N8N_PROXY_HOPS=2
-      - EXECUTIONS_MODE=queue
-      - QUEUE_BULL_REDIS_HOST=redis
-      - QUEUE_HEALTH_CHECK_ACTIVE=true
-      - OFFLOAD_MANUAL_EXECUTIONS_TO_WORKERS=true
-      - DB_TYPE=postgresdb
-      - DB_POSTGRESDB_HOST=postgres
+      - WEBHOOK_URL=https://${URL}/ # Set the webhook URL
+      - N8N_PROTOCOL=https # Set the protocol
+      - N8N_HOST=${URL} # Set the host
+      - GENERIC_TIMEZONE=${TZ} # Set the timezone
+      - N8N_TRUST_PROXY=true # Trust the proxy (nginx-proxy-manager in this case)
+      - N8N_PROXY_HOPS=2 # Number of proxies in front of the n8n instance (nginx-proxy-manager and cloudflared)
+      - EXECUTIONS_MODE=queue # Set the executions mode
+      - QUEUE_BULL_REDIS_HOST=redis # Set the redis host
+      - QUEUE_HEALTH_CHECK_ACTIVE=true # Set the queue health check active    
+      - OFFLOAD_MANUAL_EXECUTIONS_TO_WORKERS=true # Routes manual “Run” actions to queue workers, keeping the main UI container free
+      - DB_TYPE=postgresdb # Set the database type
+      - DB_POSTGRESDB_HOST=postgres # Set the postgres host
       - DB_POSTGRESDB_USER=${POSTGRES_NON_ROOT_USER}
       - DB_POSTGRESDB_PASSWORD=${POSTGRES_NON_ROOT_PASSWORD}
       - DB_POSTGRESDB_DATABASE=${POSTGRES_DB}
       - DB_POSTGRESDB_PORT=5432
-      - N8N_DIAGNOSTICS_ENABLED=false
-      - N8N_PERSONALIZATION_ENABLED=false
-      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
-      - N8N_USER_MANAGEMENT_JWT_SECRET=${N8N_USER_MANAGEMENT_JWT_SECRET}
+      - N8N_DIAGNOSTICS_ENABLED=false # Toggle anonymous telemetry to n8n (disable = no usage stats sent)
+      - N8N_PERSONALIZATION_ENABLED=false # Enables/Disables onboarding tips & template banners in the UI
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}  # Key used to encrypt credentials stored in the DB
+      - N8N_USER_MANAGEMENT_JWT_SECRET=${N8N_USER_MANAGEMENT_JWT_SECRET} # Signs JWTs for user sessions / role-based access
       - OLLAMA_HOST=ollama:11434
-      - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
-      - N8N_RUNNERS_ENABLED=true
+      - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true # Forces 0600 permissions on ~/.n8n config for extra security
+      - N8N_RUNNERS_ENABLED=true  # Turns on new task-runner workers for scalable queue execution
     volumes:
       - n8n_storage:/home/node/.n8n
       - ./n8n/backup:/backup
