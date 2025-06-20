@@ -1,6 +1,15 @@
 #!/bin/sh
 set -e
 
+# Check if import should run based on environment variables
+# If RUN_IMPORT_ON_STARTUP is set and is false, skip import
+if [ "${RUN_IMPORT_ON_STARTUP:-}" != "" ] && [ "${RUN_IMPORT_ON_STARTUP}" = "false" ]; then
+    echo "RUN_IMPORT_ON_STARTUP is false. Skipping import."
+    exit 0
+fi
+
+echo "Starting import process..."
+
 ERROR_DIR=/import/workflows/with_error
 mkdir -p "$ERROR_DIR"
 
