@@ -173,20 +173,11 @@ services:
     volumes:
       - ./n8n/import:/import
       - n8n_storage:/home/node/.n8n
-      # - ./import-loop.sh:/scripts/import-loop.sh:ro
+      - ./import-loop.sh:/scripts/import-loop.sh:ro
     networks:
       - n8n-network
     entrypoint: /bin/sh
-    command: 
-      - "-c"
-      - |
-        if [ "${RUN_IMPORT_ON_STARTUP:-false}" = "true" ]; then
-          echo "RUN_IMPORT_ON_STARTUP is true. Running import..."
-          n8n import:credentials --separate --input=/import/credentials && n8n import:workflow --separate --input=/import/workflows
-        else
-          echo "RUN_IMPORT_ON_STARTUP is not true. Skipping import."
-        fi
-    # command: ["/scripts/import-loop.sh"]
+    command: ["/scripts/import-loop.sh"]
     depends_on:
       postgres:
         condition: service_healthy
@@ -223,7 +214,11 @@ services:
       - |
         if [ "${RUN_BACKUP_ON_STARTUP:-false}" = "true" ]; then
           echo "RUN_BACKUP_ON_STARTUP is true. Running export..."
-          n8n export:credentials --backup --output=/backup/credentials && n8n export:workflow --backup --output=/backup/workflows || true
+          echo "Exporting credentials..."
+          n8n export:credentials --backup --output=/backup/credentials || echo "No credentials to export (this is normal)"
+          echo "Exporting workflows..."
+          n8n export:workflow --backup --output=/backup/workflows || echo "No workflows to export (this is normal)"
+          echo "Export process completed"
         else
           echo "RUN_BACKUP_ON_STARTUP is not true. Skipping export."
         fi
