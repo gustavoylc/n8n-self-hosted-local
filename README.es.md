@@ -1,38 +1,44 @@
 # n8n Self-Hosted Local
 
-Este repositorio proporciona configuraciones de Docker Compose para alojar [n8n](https://n8n.io/) localmente con exposición segura a internet.
+## Descripción General
 
-## ¿Qué es n8n?
+Este repositorio proporciona configuraciones de Docker Compose para alojar [n8n](https://n8n.io/) localmente con exposición segura a internet. n8n es una herramienta gratuita y de código abierto para automatización de flujos de trabajo que te permite conectar diferentes servicios y APIs para automatizar tareas repetitivas, procesamiento de datos y flujos de trabajo empresariales.
 
-n8n es una herramienta gratuita y de código abierto para automatización de flujos de trabajo que te permite conectar diferentes servicios y APIs para automatizar tareas repetitivas, procesamiento de datos y flujos de trabajo empresariales.
+**Dos configuraciones disponibles:**
 
-## Configuraciones Disponibles
+- **Configuración Básica**: Instalación simple para uso personal con componentes esenciales
+- **Configuración Avanzada**: Instalación con funciones de IA, persistencia de base de datos y herramientas de respaldo
 
-Este repositorio contiene dos configuraciones diferentes de Docker Compose para satisfacer diferentes necesidades:
+## Estructura del Directorio
 
-### 📁 Configuración Básica (`/basic`)
+```
+n8n-self-hosted-local/
+├── basic/                    # Configuración simple para uso personal
+│   └── docker-compose.yml   # Configuración simple de Docker Compose
+├── advanced/                 # Configuración avanzada con funciones de IA
+│   ├── docker-compose.yml   # Configuración avanzada de Docker Compose
+│   ├── init-data.sh         # Script de inicialización de base de datos
+│   ├── import-loop.sh       # Script avanzado de importación con manejo de errores
+│   └── n8n/                 # Directorios de datos de n8n
+│       ├── backup/          # Directorio para respaldos
+│       │   ├── credentials/ # Almacenamiento de respaldos de credenciales
+│       │   └── workflows/   # Almacenamiento de respaldos de flujos de trabajo
+│       └── import/          # Directorio para importar datos
+│           ├── credentials/ # Importar credenciales desde aquí
+│           └── workflows/   # Importar flujos de trabajo desde aquí
+├── .gitignore               # Archivo Git ignore
+├── LICENSE                  # Licencia MIT
+├── README.md               # Documentación en inglés
+└── README.es.md            # Este archivo (Español)
+```
 
-Una configuración simple y liviana perfecta para:
-
-- Comenzar con n8n
-- Proyectos personales
-- Automatización a pequeña escala
-
-**Incluye:**
+### Componentes de Configuración Básica:
 
 - Herramienta de automatización de flujos de trabajo n8n
 - Nginx Proxy Manager para SSL y proxy inverso
 - Cloudflare Tunnel para exposición segura a internet
 
-### 📁 Configuración Avanzada (`/advanced`)
-
-Una configuración completa y lista para producción diseñada para:
-
-- Alto rendimiento y escalabilidad
-- Flujos de trabajo con inteligencia artificial
-- Uso profesional y empresarial
-
-**Incluye:**
+### Componentes de Configuración Avanzada:
 
 - n8n en modo cola (servicio principal + worker)
 - Base de datos PostgreSQL para persistencia
@@ -43,32 +49,27 @@ Una configuración completa y lista para producción diseñada para:
 - Base de datos vectorial Qdrant para funciones de IA
 - Herramientas automatizadas de importación/exportación para respaldos
 
-## Comenzar
-
-1. Elige la configuración que mejor se adapte a tus necesidades (básica o avanzada)
-2. Navega a la carpeta respectiva
-3. Sigue las instrucciones detalladas en el archivo README de cada carpeta
-
-## Requisitos Previos
+## Prerrequisitos
 
 - [Docker](https://docs.docker.com/get-docker/) instalado
 - Cuenta de [Cloudflare](https://www.cloudflare.com/) con un dominio registrado
 
-## Características de Seguridad
+## Puesta en Marcha
 
-Ambas configuraciones incluyen:
+**Elige tu configuración y mira el tutorial en video correspondiente:**
 
-- **Certificados SSL** gestionados automáticamente
-- **Cloudflare Tunnel** para exposición segura sin abrir puertos
-- Configuración de **proxy inverso** para mayor seguridad
+### Configuración Básica
 
-## Soporte
+**Para instalación simple y uso personal:**
 
-Para instrucciones detalladas de configuración, solución de problemas y opciones de configuración, consulta los archivos README en cada carpeta respectiva:
+[![Tutorial Configuración Básica](https://img.youtube.com/vi/GJid000lZsY/maxresdefault.jpg)](https://youtu.be/GJid000lZsY "Tutorial Configuración Básica n8n")
 
-- [Documentación Configuración Básica](./basic/README.md)
-- [Documentación Configuración Avanzada](./advanced/README.md)
+**Navega a:** carpeta `/basic`
 
-## Licencia
+### Configuración Avanzada
 
-Este proyecto está licenciado bajo la Licencia MIT - consulta el archivo [LICENSE](LICENSE) para más detalles.
+**Para instalación con funciones de IA:**
+
+[![Tutorial Configuración Avanzada](https://img.youtube.com/vi/FyXjwv_oZuc/maxresdefault.jpg)](https://youtu.be/FyXjwv_oZuc "Tutorial Configuración Avanzada n8n")
+
+**Navega a:** carpeta `/advanced`

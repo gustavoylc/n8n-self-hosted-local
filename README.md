@@ -1,38 +1,44 @@
 # n8n Self-Hosted Local
 
-This repository provides Docker Compose configurations to self-host [n8n](https://n8n.io/) workflow automation tool locally with secure internet exposure.
+## General Description
 
-## What is n8n?
+This repository provides Docker Compose configurations to self-host [n8n](https://n8n.io/) workflow automation tool locally with secure internet exposure. n8n is a free and source-available workflow automation tool that allows you to connect different services and APIs to automate repetitive tasks, data processing, and business workflows.
 
-n8n is a free and source-available workflow automation tool that allows you to connect different services and APIs to automate repetitive tasks, data processing, and business workflows.
+**Two configurations available:**
 
-## Available Setups
+- **Basic Setup**: Simple installation for personal use with essential components
+- **Advanced Setup**: Installation with AI features, database persistence, and backup tools
 
-This repository contains two different Docker Compose configurations to suit different needs:
+## Directory Structure
 
-### 📁 Basic Setup (`/basic`)
+```
+n8n-self-hosted-local/
+├── basic/                    # Simple setup for personal use
+│   └── docker-compose.yml   # Simple Docker Compose configuration
+├── advanced/                 # Advanced setup with AI features
+│   ├── docker-compose.yml   # Advanced Docker Compose configuration
+│   ├── init-data.sh         # Database initialization script
+│   ├── import-loop.sh       # Advanced import script with error handling
+│   └── n8n/                 # n8n data directories
+│       ├── backup/          # Directory for backups
+│       │   ├── credentials/ # Backup credentials storage
+│       │   └── workflows/   # Backup workflows storage
+│       └── import/          # Directory for importing data
+│           ├── credentials/ # Import credentials from here
+│           └── workflows/   # Import workflows from here
+├── .gitignore               # Git ignore file
+├── LICENSE                  # MIT License
+├── README.md               # This file (English)
+└── README.es.md            # Spanish documentation
+```
 
-A simple and lightweight setup perfect for:
-
-- Getting started with n8n
-- Personal projects
-- Small-scale automation
-
-**Includes:**
+### Basic Setup Components:
 
 - n8n workflow automation tool
 - Nginx Proxy Manager for SSL and reverse proxy
 - Cloudflare Tunnel for secure internet exposure
 
-### 📁 Advanced Setup (`/advanced`)
-
-A comprehensive and production-ready setup designed for:
-
-- High performance and scalability
-- AI-powered workflows
-- Professional and enterprise use
-
-**Includes:**
+### Advanced Setup Components:
 
 - n8n in queue mode (main service + worker)
 - PostgreSQL database for persistence
@@ -43,32 +49,27 @@ A comprehensive and production-ready setup designed for:
 - Qdrant vector database for AI features
 - Automated import/export tools for backups
 
-## Getting Started
-
-1. Choose the setup that best fits your needs (basic or advanced)
-2. Navigate to the respective folder
-3. Follow the detailed instructions in each folder's README file
-
 ## Prerequisites
 
 - [Docker](https://docs.docker.com/get-docker/) installed
 - [Cloudflare](https://www.cloudflare.com/) account with a registered domain
 
-## Security Features
+## Getting Started
 
-Both setups include:
+**Choose your setup and watch the corresponding video tutorial:**
 
-- **SSL certificates** managed automatically
-- **Cloudflare Tunnel** for secure exposure without opening ports
-- **Reverse proxy** configuration for enhanced security
+### Basic Setup
 
-## Support
+**For simple installation and personal use:**
 
-For detailed setup instructions, troubleshooting, and configuration options, please refer to the README files in each respective folder:
+[![Basic Setup Tutorial](https://img.youtube.com/vi/GJid000lZsY/maxresdefault.jpg)](https://youtu.be/GJid000lZsY "n8n Basic Setup Tutorial")
 
-- [Basic Setup Documentation](./basic/README.md)
-- [Advanced Setup Documentation](./advanced/README.md)
+**Navigate to:** `/basic` folder
 
-## License
+### Advanced Setup
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+**For installation with AI features:**
+
+[![Advanced Setup Tutorial](https://img.youtube.com/vi/FyXjwv_oZuc/maxresdefault.jpg)](https://youtu.be/FyXjwv_oZuc "n8n Advanced Setup Tutorial")
+
+**Navigate to:** `/advanced` folder
