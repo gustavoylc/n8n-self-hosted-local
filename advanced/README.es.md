@@ -40,7 +40,7 @@ advanced/
 ## Puesta en Marcha
 
 Para un tutorial detallado en video sobre cómo configurar este proyecto avanzado, puedes ver nuestra guía en YouTube:
-[![Tutorial de Configuración Avanzada](https://img.youtube.com/vi/74AkNRf1MQQ/0.jpg)](https://youtu.be/74AkNRf1MQQ)
+[![Tutorial de Configuración Avanzada](https://img.youtube.com/vi/FyXjwv_oZuc/0.jpg)](https://youtu.be/FyXjwv_oZuc)
 
 1.  **Clonar el repositorio** (si aún no lo has hecho).
 

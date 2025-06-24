@@ -39,7 +39,7 @@ advanced/
 ## Getting Started
 
 For a detailed video tutorial on how to set up this advanced project, you can watch our guide on YouTube:
-[![Advanced Setup Tutorial](https://img.youtube.com/vi/74AkNRf1MQQ/0.jpg)](https://youtu.be/74AkNRf1MQQ)
+[![Advanced Setup Tutorial](https://img.youtube.com/vi/FyXjwv_oZuc/0.jpg)](https://youtu.be/FyXjwv_oZuc)
 
 1.  **Clone the repository** (if you haven't already).
 
