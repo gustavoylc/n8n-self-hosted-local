@@ -1,0 +1,570 @@
+# Store all the data in the volumes
+volumes:
+  npm_storage:
+  npm_letsencrypt:
+  n8n_storage:
+  cloudflared_storage:
+  postgres_storage:
+  redis_storage:
+  ollama_storage:
+  qdrant_storage:  
+  evolution_instances:
+  evolution_store:
+  postgres_evolution_storage:
+  redis_evolution_storage:
+
+# Create a network for the services to communicate with each other
+networks:
+  n8n-network:
+    driver: bridge
+
+# Create the services
+services:
+  # Handle the SSL certificates and the reverse proxy for the n8n instance
+  nginx-proxy-manager:
+    image: jc21/nginx-proxy-manager:latest # Use the latest nginx-proxy-manager image
+    hostname: nginx-proxy-manager # Set the hostname for the service
+    container_name: nginx-proxy-manager # Set the container name
+    restart: always # Restart the service if it crashes
+    ports:
+      - "80:80" # HTTP
+      - "443:443" # HTTPS
+      - "81:81" # Admin panel
+    volumes:
+      - npm_storage:/data # Store the data for the NPM instance
+      - npm_letsencrypt:/etc/letsencrypt # Store the SSL certificates
+    environment:
+      - DISABLE_IPV6=true
+      - TZ=${TZ} # Set the timezone
+    networks:
+      - n8n-network
+
+  # Handle the cloudflared tunnel
+  cloudflared:
+    image: cloudflare/cloudflared:latest # Use the latest cloudflared image
+    hostname: cloudflared # Set the hostname for the service
+    container_name: cloudflared # Set the container name
+    restart: unless-stopped # Restart the service if it crashes
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARED_TUNNEL_TOKEN} # Run the cloudflared tunnel
+    volumes:
+      - cloudflared_storage:/etc/cloudflared # Store the cloudflared configuration
+    networks:
+      - n8n-network
+
+  # Handle the postgres database
+  postgres:
+    image: postgres:16 # Use the latest postgres image
+    hostname: postgres # Set the hostname for the service
+    container_name: postgres # Set the container name
+    restart: unless-stopped # Restart the service if it crashes
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_NON_ROOT_USER=${POSTGRES_NON_ROOT_USER}
+      - POSTGRES_NON_ROOT_PASSWORD=${POSTGRES_NON_ROOT_PASSWORD}
+    volumes:
+      - postgres_storage:/var/lib/postgresql/data # Store the postgres data
+      - ./init-data.sh:/docker-entrypoint-initdb.d/init-data.sh # Run the init-data.sh script
+    networks:
+      - n8n-network
+    healthcheck: # Check if the postgres service is healthy
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -h localhost -U ${POSTGRES_USER} -d ${POSTGRES_DB}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Handle the redis database
+  redis:
+    image: redis:8.0.2
+    hostname: redis # Set the hostname for the service
+    container_name: redis # Set the container name
+    restart: unless-stopped # Restart the service if it crashes
+    volumes:
+      - redis_storage:/data # Store the redis data
+    networks:
+      - n8n-network
+    healthcheck: # Check if the redis service is healthy
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Handle the qdrant database
+  qdrant:
+    image: qdrant/qdrant:latest # Use the latest qdrant image
+    hostname: qdrant # Set the hostname for the service
+    container_name: qdrant # Set the container name
+    restart: unless-stopped # Restart the service if it crashes
+    volumes:
+      - qdrant_storage:/qdrant/storage
+    networks:
+      - n8n-network
+
+  # Handle the ollama model server
+  ollama:
+    # Use `ollama/ollama:latest` for CPU, or `ollama/ollama:rocm` for AMD GPUs.
+    # For NVIDIA, use the `deploy` section below.
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    volumes:
+      - ollama_storage:/root/.ollama
+    networks:
+      - n8n-network
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    # For NVIDIA GPUs, uncomment the following:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    # For AMD GPUs on Linux, uncomment the following:
+    # devices:
+    #   - "/dev/kfd"
+    #   - "/dev/dri"
+
+  # Handle the init-ollama service
+  # This service will pull the llama3 model when you first start the stack.
+  # You can change 'llama3.2' to another model if you prefer.
+  init-ollama:
+    image: ollama/ollama:latest
+    container_name: init-ollama
+    networks:
+      - n8n-network
+    volumes:
+      - ollama_storage:/root/.ollama
+    entrypoint: /bin/sh
+    command:
+      - "-c"
+      - |
+        echo "Waiting for Ollama server to be ready..."
+        until OLLAMA_HOST=http://ollama:11434 ollama list > /dev/null 2>&1; do
+          echo "Waiting for Ollama server..."
+          sleep 5
+        done
+        echo "Ollama server is ready, pulling models..."
+        OLLAMA_HOST=http://ollama:11434 ollama pull llama3.2
+        echo "Models pulled successfully"
+    depends_on:
+      ollama:
+        condition: service_healthy
+
+  # Handle the n8n-import service
+  n8n-import:
+    image: docker.n8n.io/n8nio/n8n:latest # Use the latest n8n image
+    hostname: n8n-import # Set the hostname for the service
+    container_name: n8n-import # Set the container name
+    restart: "no" # Do not restart the service if it crashes
+    volumes:
+      - ./n8n/import:/import
+      - n8n_storage:/home/node/.n8n
+      - ./import-loop.sh:/scripts/import-loop.sh:ro
+    networks:
+      - n8n-network
+    entrypoint: /bin/sh
+    command: ["/scripts/import-loop.sh"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgres
+      - DB_POSTGRESDB_USER=${POSTGRES_NON_ROOT_USER}
+      - DB_POSTGRESDB_PASSWORD=${POSTGRES_NON_ROOT_PASSWORD}
+      - DB_POSTGRESDB_DATABASE=${POSTGRES_DB}
+      - DB_POSTGRESDB_PORT=5432
+      - QUEUE_BULL_REDIS_HOST=redis
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+      - N8N_USER_MANAGEMENT_JWT_SECRET=${N8N_USER_MANAGEMENT_JWT_SECRET}
+      - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
+      - N8N_RUNNERS_ENABLED=true
+      - RUN_IMPORT_ON_STARTUP=${RUN_IMPORT_ON_STARTUP:-false}
+
+  # Handle the n8n-export service
+  n8n-export:
+    image: docker.n8n.io/n8nio/n8n:latest # Use the latest n8n image
+    hostname: n8n-export # Set the hostname for the service
+    container_name: n8n-export # Set the container name
+    restart: "no" # Do not restart the service if it crashes
+    networks:
+      - n8n-network
+    volumes:
+      - ./n8n/backup:/backup
+      - n8n_storage:/home/node/.n8n
+    entrypoint: /bin/sh
+    command:
+      - "-c"
+      - |
+        if [ "${RUN_BACKUP_ON_STARTUP:-false}" = "true" ]; then
+          echo "RUN_BACKUP_ON_STARTUP is true. Running export..."
+          echo "Exporting credentials..."
+          n8n export:credentials --backup --output=/backup/credentials || echo "No credentials to export (this is normal)"
+          echo "Exporting workflows..."
+          n8n export:workflow --backup --output=/backup/workflows || echo "No workflows to export (this is normal)"
+          echo "Export process completed"
+        else
+          echo "RUN_BACKUP_ON_STARTUP is not true. Skipping export."
+        fi
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      n8n-import:
+        condition: service_completed_successfully
+    environment:
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgres
+      - DB_POSTGRESDB_USER=${POSTGRES_NON_ROOT_USER}
+      - DB_POSTGRESDB_PASSWORD=${POSTGRES_NON_ROOT_PASSWORD}
+      - DB_POSTGRESDB_DATABASE=${POSTGRES_DB}
+      - DB_POSTGRESDB_PORT=5432
+      - QUEUE_BULL_REDIS_HOST=redis
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+      - N8N_USER_MANAGEMENT_JWT_SECRET=${N8N_USER_MANAGEMENT_JWT_SECRET}
+      - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
+      - N8N_RUNNERS_ENABLED=true
+      - RUN_BACKUP_ON_STARTUP=${RUN_BACKUP_ON_STARTUP:-false}
+
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    hostname: n8n # Set the hostname for the service
+    container_name: n8n # Set the container name
+    restart: unless-stopped # Restart the service if it crashes
+    environment:
+      - WEBHOOK_URL=https://${URL}/ # Set the webhook URL
+      - N8N_PROTOCOL=https # Set the protocol
+      - N8N_HOST=${URL} # Set the host
+      - GENERIC_TIMEZONE=${TZ} # Set the timezone
+      - N8N_TRUST_PROXY=true # Trust the proxy (nginx-proxy-manager in this case)
+      - N8N_PROXY_HOPS=2 # Number of proxies in front of the n8n instance (nginx-proxy-manager and cloudflared)
+      - EXECUTIONS_MODE=queue # Set the executions mode
+      - QUEUE_BULL_REDIS_HOST=redis # Set the redis host
+      - QUEUE_HEALTH_CHECK_ACTIVE=true # Set the queue health check active    
+      - OFFLOAD_MANUAL_EXECUTIONS_TO_WORKERS=true # Routes manual “Run” actions to queue workers, keeping the main UI container free
+      - DB_TYPE=postgresdb # Set the database type
+      - DB_POSTGRESDB_HOST=postgres # Set the postgres host
+      - DB_POSTGRESDB_USER=${POSTGRES_NON_ROOT_USER}
+      - DB_POSTGRESDB_PASSWORD=${POSTGRES_NON_ROOT_PASSWORD}
+      - DB_POSTGRESDB_DATABASE=${POSTGRES_DB}
+      - DB_POSTGRESDB_PORT=5432
+      - N8N_DIAGNOSTICS_ENABLED=false # Toggle anonymous telemetry to n8n (disable = no usage stats sent)
+      - N8N_PERSONALIZATION_ENABLED=false # Enables/Disables onboarding tips & template banners in the UI
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}  # Key used to encrypt credentials stored in the DB
+      - N8N_USER_MANAGEMENT_JWT_SECRET=${N8N_USER_MANAGEMENT_JWT_SECRET} # Signs JWTs for user sessions / role-based access
+      - OLLAMA_HOST=ollama:11434
+      - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true # Forces 0600 permissions on ~/.n8n config for extra security
+      - N8N_RUNNERS_ENABLED=true  # Turns on new task-runner workers for scalable queue execution
+    volumes:
+      - n8n_storage:/home/node/.n8n
+      - ./n8n/backup:/backup
+      - ./n8n/import:/import
+      - ./n8n/import/credentials:/import/credentials
+      - ./n8n/import/workflows:/import/workflows
+    networks:
+      - n8n-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      n8n-import:
+        condition: service_completed_successfully
+      n8n-export:
+        condition: service_completed_successfully
+
+  n8n-worker:
+    image: docker.n8n.io/n8nio/n8n:latest
+    hostname: n8n-worker
+    container_name: n8n-worker
+    command: worker
+    restart: unless-stopped
+    environment:
+      - GENERIC_TIMEZONE=${TZ}
+      - QUEUE_BULL_REDIS_HOST=redis
+      - QUEUE_HEALTH_CHECK_ACTIVE=true
+      - OFFLOAD_MANUAL_EXECUTIONS_TO_WORKERS=true
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgres
+      - DB_POSTGRESDB_USER=${POSTGRES_NON_ROOT_USER}
+      - DB_POSTGRESDB_PASSWORD=${POSTGRES_NON_ROOT_PASSWORD}
+      - DB_POSTGRESDB_DATABASE=${POSTGRES_DB}
+      - DB_POSTGRESDB_PORT=5432
+      - N8N_DIAGNOSTICS_ENABLED=false
+      - N8N_PERSONALIZATION_ENABLED=false
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+      - N8N_USER_MANAGEMENT_JWT_SECRET=${N8N_USER_MANAGEMENT_JWT_SECRET}
+      - OLLAMA_HOST=ollama:11434
+      - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
+      - N8N_RUNNERS_ENABLED=true
+    volumes:
+      - n8n_storage:/home/node/.n8n
+    networks:
+      - n8n-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      n8n-import:
+        condition: service_completed_successfully
+      n8n-export:
+        condition: service_completed_successfully
+
+
+  # Evolution API Services
+  postgres-evolution:
+    image: postgres:16 # Use the latest postgres image
+    hostname: postgres-evolution # Set the hostname for the service
+    container_name: postgres-evolution # Set the container name
+    restart: unless-stopped # Restart the service if it crashes
+    environment:
+      - POSTGRES_USER=${POSTGRES_EVOLUTION_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_EVOLUTION_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_EVOLUTION_DB}
+      - POSTGRES_NON_ROOT_USER=${POSTGRES_EVOLUTION_NON_ROOT_USER}
+      - POSTGRES_NON_ROOT_PASSWORD=${POSTGRES_EVOLUTION_NON_ROOT_PASSWORD}
+    volumes:
+      - postgres_evolution_storage:/var/lib/postgresql/data # Store the postgres data for evolution instance
+      - ./init-data.sh:/docker-entrypoint-initdb.d/init-data.sh # Run the init-data.sh script
+    networks:
+      - n8n-network
+    healthcheck: # Check if the postgres service is healthy
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -h localhost -U ${POSTGRES_EVOLUTION_USER} -d ${POSTGRES_EVOLUTION_DB}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis-evolution:
+    image: redis:8.0.2
+    hostname: redis-evolution # Set the hostname for the service
+    container_name: redis-evolution # Set the container name
+    restart: unless-stopped # Restart the service if it crashes
+    volumes:
+      - redis_evolution_storage:/data # Store the redis data for evolution instance
+    networks:
+      - n8n-network
+    healthcheck: # Check if the redis service is healthy
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  evolution-api:
+    image: atendai/evolution-api:latest
+    hostname: evolution-api # Set the hostname for the service
+    container_name: evolution-api # Set the container name
+    restart: unless-stopped # Restart the service if it crashes
+    ports:
+      - "127.0.0.1:8080:8080" # Puerto local para debug/testing
+    environment:
+      - SERVER_TYPE=http
+      - SERVER_PORT=8080
+      - SERVER_URL=https://$(EVOLUTION_API_URL)
+      - SENTRY_DSN=
+      - CORS_ORIGIN=*
+      - CORS_METHODS=GET,POST,PUT,DELETE
+      - CORS_CREDENTIALS=true
+      - LOG_LEVEL=ERROR,WARN,DEBUG,INFO,LOG,VERBOSE,DARK,WEBHOOKS,WEBSOCKET
+      - LOG_COLOR=true
+      - LOG_BAILEYS=error
+      - EVENT_EMITTER_MAX_LISTENERS=50
+      - DEL_INSTANCE=false
+      - DATABASE_PROVIDER=postgresql
+      - DATABASE_CONNECTION_URI=postgresql://${POSTGRES_EVOLUTION_NON_ROOT_USER}:${POSTGRES_EVOLUTION_NON_ROOT_PASSWORD}@postgres-evolution:5432/${POSTGRES_EVOLUTION_DB}
+      - DATABASE_CONNECTION_CLIENT_NAME=evolution_exchange
+      - DATABASE_SAVE_DATA_INSTANCE=true
+      - DATABASE_SAVE_DATA_NEW_MESSAGE=true
+      - DATABASE_SAVE_MESSAGE_UPDATE=true
+      - DATABASE_SAVE_DATA_CONTACTS=true
+      - DATABASE_SAVE_DATA_CHATS=true
+      - DATABASE_SAVE_DATA_LABELS=true
+      - DATABASE_SAVE_DATA_HISTORIC=true
+      - DATABASE_SAVE_IS_ON_WHATSAPP=true
+      - DATABASE_SAVE_IS_ON_WHATSAPP_DAYS=7
+      - DATABASE_DELETE_MESSAGE=true
+      - RABBITMQ_ENABLED=false
+      - RABBITMQ_URI=amqp://localhost
+      - RABBITMQ_EXCHANGE_NAME=evolution
+      - RABBITMQ_GLOBAL_ENABLED=false
+      - RABBITMQ_EVENTS_APPLICATION_STARTUP=false
+      - RABBITMQ_EVENTS_INSTANCE_CREATE=false
+      - RABBITMQ_EVENTS_INSTANCE_DELETE=false
+      - RABBITMQ_EVENTS_QRCODE_UPDATED=false
+      - RABBITMQ_EVENTS_MESSAGES_SET=false
+      - RABBITMQ_EVENTS_MESSAGES_UPSERT=false
+      - RABBITMQ_EVENTS_MESSAGES_EDITED=false
+      - RABBITMQ_EVENTS_MESSAGES_UPDATE=false
+      - RABBITMQ_EVENTS_MESSAGES_DELETE=false
+      - RABBITMQ_EVENTS_SEND_MESSAGE=false
+      - RABBITMQ_EVENTS_CONTACTS_SET=false
+      - RABBITMQ_EVENTS_CONTACTS_UPSERT=false
+      - RABBITMQ_EVENTS_CONTACTS_UPDATE=false
+      - RABBITMQ_EVENTS_PRESENCE_UPDATE=false
+      - RABBITMQ_EVENTS_CHATS_SET=false
+      - RABBITMQ_EVENTS_CHATS_UPSERT=false
+      - RABBITMQ_EVENTS_CHATS_UPDATE=false
+      - RABBITMQ_EVENTS_CHATS_DELETE=false
+      - RABBITMQ_EVENTS_GROUPS_UPSERT=false
+      - RABBITMQ_EVENTS_GROUP_UPDATE=false
+      - RABBITMQ_EVENTS_GROUP_PARTICIPANTS_UPDATE=false
+      - RABBITMQ_EVENTS_CONNECTION_UPDATE=false
+      - RABBITMQ_EVENTS_REMOVE_INSTANCE=false
+      - RABBITMQ_EVENTS_LOGOUT_INSTANCE=false
+      - RABBITMQ_EVENTS_CALL=false
+      - RABBITMQ_EVENTS_TYPEBOT_START=false
+      - RABBITMQ_EVENTS_TYPEBOT_CHANGE_STATUS=false
+      - SQS_ENABLED=false
+      - SQS_ACCESS_KEY_ID=
+      - SQS_SECRET_ACCESS_KEY=
+      - SQS_ACCOUNT_ID=
+      - SQS_REGION=
+      - WEBSOCKET_ENABLED=false
+      - WEBSOCKET_GLOBAL_EVENTS=false
+      - PUSHER_ENABLED=false
+      - PUSHER_GLOBAL_ENABLED=false
+      - PUSHER_GLOBAL_APP_ID=
+      - PUSHER_GLOBAL_KEY=
+      - PUSHER_GLOBAL_SECRET=
+      - PUSHER_GLOBAL_CLUSTER=
+      - PUSHER_GLOBAL_USE_TLS=true
+      - PUSHER_EVENTS_APPLICATION_STARTUP=true
+      - PUSHER_EVENTS_QRCODE_UPDATED=true
+      - PUSHER_EVENTS_MESSAGES_SET=true
+      - PUSHER_EVENTS_MESSAGES_UPSERT=true
+      - PUSHER_EVENTS_MESSAGES_EDITED=true
+      - PUSHER_EVENTS_MESSAGES_UPDATE=true
+      - PUSHER_EVENTS_MESSAGES_DELETE=true
+      - PUSHER_EVENTS_SEND_MESSAGE=true
+      - PUSHER_EVENTS_CONTACTS_SET=true
+      - PUSHER_EVENTS_CONTACTS_UPSERT=true
+      - PUSHER_EVENTS_CONTACTS_UPDATE=true
+      - PUSHER_EVENTS_PRESENCE_UPDATE=true
+      - PUSHER_EVENTS_CHATS_SET=true
+      - PUSHER_EVENTS_CHATS_UPSERT=true
+      - PUSHER_EVENTS_CHATS_UPDATE=true
+      - PUSHER_EVENTS_CHATS_DELETE=true
+      - PUSHER_EVENTS_GROUPS_UPSERT=true
+      - PUSHER_EVENTS_GROUPS_UPDATE=true
+      - PUSHER_EVENTS_GROUP_PARTICIPANTS_UPDATE=true
+      - PUSHER_EVENTS_CONNECTION_UPDATE=true
+      - PUSHER_EVENTS_LABELS_EDIT=true
+      - PUSHER_EVENTS_LABELS_ASSOCIATION=true
+      - PUSHER_EVENTS_CALL=true
+      - PUSHER_EVENTS_TYPEBOT_START=false
+      - PUSHER_EVENTS_TYPEBOT_CHANGE_STATUS=false
+      - WA_BUSINESS_TOKEN_WEBHOOK=evolution
+      - WA_BUSINESS_URL=https://graph.facebook.com
+      - WA_BUSINESS_VERSION=v20.0
+      - WA_BUSINESS_LANGUAGE=en_US
+      - WEBHOOK_GLOBAL_ENABLED=false
+      - WEBHOOK_GLOBAL_URL=
+      - WEBHOOK_GLOBAL_WEBHOOK_BY_EVENTS=false
+      - WEBHOOK_EVENTS_APPLICATION_STARTUP=false
+      - WEBHOOK_EVENTS_QRCODE_UPDATED=true
+      - WEBHOOK_EVENTS_MESSAGES_SET=true
+      - WEBHOOK_EVENTS_MESSAGES_UPSERT=true
+      - WEBHOOK_EVENTS_MESSAGES_EDITED=true
+      - WEBHOOK_EVENTS_MESSAGES_UPDATE=true
+      - WEBHOOK_EVENTS_MESSAGES_DELETE=true
+      - WEBHOOK_EVENTS_SEND_MESSAGE=true
+      - WEBHOOK_EVENTS_CONTACTS_SET=true
+      - WEBHOOK_EVENTS_CONTACTS_UPSERT=true
+      - WEBHOOK_EVENTS_CONTACTS_UPDATE=true
+      - WEBHOOK_EVENTS_PRESENCE_UPDATE=true
+      - WEBHOOK_EVENTS_CHATS_SET=true
+      - WEBHOOK_EVENTS_CHATS_UPSERT=true
+      - WEBHOOK_EVENTS_CHATS_UPDATE=true
+      - WEBHOOK_EVENTS_CHATS_DELETE=true
+      - WEBHOOK_EVENTS_GROUPS_UPSERT=true
+      - WEBHOOK_EVENTS_GROUPS_UPDATE=true
+      - WEBHOOK_EVENTS_GROUP_PARTICIPANTS_UPDATE=true
+      - WEBHOOK_EVENTS_CONNECTION_UPDATE=true
+      - WEBHOOK_EVENTS_REMOVE_INSTANCE=false
+      - WEBHOOK_EVENTS_LOGOUT_INSTANCE=false
+      - WEBHOOK_EVENTS_LABELS_EDIT=true
+      - WEBHOOK_EVENTS_LABELS_ASSOCIATION=true
+      - WEBHOOK_EVENTS_CALL=true
+      - WEBHOOK_EVENTS_TYPEBOT_START=false
+      - WEBHOOK_EVENTS_TYPEBOT_CHANGE_STATUS=false
+      - WEBHOOK_EVENTS_ERRORS=false
+      - WEBHOOK_EVENTS_ERRORS_WEBHOOK=
+      - CONFIG_SESSION_PHONE_CLIENT=gustavo
+      - CONFIG_SESSION_PHONE_NAME=Chrome
+      - CONFIG_SESSION_PHONE_VERSION=2.3000.1025117837
+      - QRCODE_LIMIT=30
+      - QRCODE_COLOR=#175197
+      - TYPEBOT_ENABLED=false
+      - TYPEBOT_API_VERSION=latest
+      - CHATWOOT_ENABLED=false
+      - CHATWOOT_MESSAGE_READ=true
+      - CHATWOOT_MESSAGE_DELETE=true
+      - CHATWOOT_BOT_CONTACT=true
+      - CHATWOOT_IMPORT_DATABASE_CONNECTION_URI=postgresql://user:passwprd@host:5432/chatwoot?sslmode=disable
+      - CHATWOOT_IMPORT_PLACEHOLDER_MEDIA_MESSAGE=true
+      - OPENAI_ENABLED=false
+      - DIFY_ENABLED=false
+      - CACHE_REDIS_ENABLED=true
+      - CACHE_REDIS_URI=redis://redis-evolution:6379/0
+      - CACHE_REDIS_TTL=604800
+      - CACHE_REDIS_PREFIX_KEY=evolution
+      - CACHE_REDIS_SAVE_INSTANCES=false
+      - CACHE_LOCAL_ENABLED=false
+      - S3_ENABLED=false
+      - S3_ACCESS_KEY=
+      - S3_SECRET_KEY=
+      - S3_BUCKET=evolution
+      - S3_PORT=443
+      - S3_ENDPOINT=s3.domain.com
+      - S3_REGION=eu-west-3
+      - S3_USE_SSL=true
+      - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY}
+      - AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES=true
+      - LANGUAGE=en
+      - PROXY_HOST=
+      - PROXY_PORT=80
+      - PROXY_PROTOCOL=http
+      - PROXY_USERNAME=
+      - PROXY_PASSWORD=
+
+    volumes:
+      - evolution_instances:/evolution/instances # Store Evolution API instances data
+      - evolution_store:/evolution/store # Store Evolution API storage
+    networks:
+      - n8n-network
+    depends_on:
+      postgres-evolution:
+        condition: service_healthy
+      redis-evolution:
+        condition: service_healthy
+    healthcheck: 
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
